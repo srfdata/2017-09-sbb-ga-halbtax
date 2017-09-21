@@ -1,9 +1,9 @@
-# Röstigraben bei GA und Halbtax
+# Hier verkaufen sich GA und Halbtax am besten
 
 
 ## Artikel
 
-Die Daten und Methoden in diesem Repository beziehen sich auf den Artikel [Röstigraben bei GA und Halbtax](http://www.srf.ch/data), publiziert am 21. September 2017.
+Die Daten und Methoden in diesem Repository beziehen sich auf den Artikel [Hier verkaufen sich GA und Halbtax am besten](http://www.srf.ch/news/schweiz/pendlerland-schweiz-hier-verkaufen-sich-ga-und-halbtax-am-besten), publiziert am 21. September 2017.
 
 ### Vorprozessierung und Analyse
 
