@@ -1,0 +1,632 @@
+---
+title: "Röstigraben bei GA und Halbtax"
+author: "SRF Data, Gian-Marco Schmid, Timo Grossenbacher (timo.grossenbacher@srf.ch)"
+date: "September 2017"
+output:
+  html_document:
+    code_folding: show
+    echo: TRUE
+    warning: FALSE
+    message: FALSE
+    theme: simplex
+    toc: yes
+    toc_float: 
+      collapsed: false
+      smooth_scroll: false
+subtitle: Vorprozessierung und Analyse
+---
+
+```{r, echo=FALSE}
+project_name <- "2017-09-sbb-ga-halbtax"
+r_version <- "3.3.3" # gegebenfalls abändern, 
+# falls 3.3.3 nicht mehr verfügbar ist 
+# (die volle Reproduzierbarkeit ist dann 
+# jedoch nicht mehr gewährleistet)
+```
+
+## Vorbemerkungen
+
+Dieses Dokument beschreibt die Vorprozessierung und explorative Analyse des Datensatzes, der Grundlage des auf srf.ch veröffentlichten Artikel [Hier verkaufen sich GA und Halbtax am besten](http://www.srf.ch/data) ist.
+
+SRF Data legt Wert darauf, dass die Datenvorprozessierung und -Analyse nachvollzogen und überprüft werden kann. SRF Data glaubt an das Prinzip offener Daten, aber auch offener und nachvollziehbarer Methoden. Zum anderen soll es Dritten ermöglicht werden, auf dieser Vorarbeit aufzubauen und damit weitere Auswertungen oder Applikationen zu generieren.  
+
+
+### R-Script & Daten
+
+Die Vorprozessierung und Analyse wurde im Statistikprogramm R vorgenommen. Das zugrunde liegende Script sowie die prozessierten Daten können unter [diesem Link](https://srfdata.github.io/`r project_name`/rscript.zip) heruntergeladen werden. Durch Ausführen von `main.Rmd` kann der hier beschriebene Prozess nachvollzogen und der für den Artikel verwendete Datensatz generiert werden. Dabei werden Daten aus dem Ordner `input` eingelesen und Ergebnisse in den Ordner `output` geschrieben. 
+
+Verwendet wird **R Version `r r_version`**. Wenn der Code nicht funktioniert, könnte es daran liegen, dass die installierte R Version eine ältere ist und deshalb aus Kompatibilitätsgründen ältere Packages installiert werden, als die von uns verwendeten. Manchmal hilft es, das Skript mehrmals auszuführen, wenn ein Fehler auftritt. Besonders bei Package-Installationsproblemen kann es helfen, die R-Session mehrmals neuzustarten und den Code nochmals auszuführen. Allenfalls müssen noch Third-Party-Libraries wie z.B. `libgdal-dev` installiert werden.
+
+### GitHub
+
+Der Code für die vorliegende Datenprozessierung ist auf [https://github.com/srfdata/`r project_name`](https://github.com/srfdata/`r project_name`) zur freien Verwendung verfügbar. 
+
+### Lizenz
+
+<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons Lizenzvertrag" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a><br /><span xmlns:dct="http://purl.org/dc/terms/" href="http://purl.org/dc/dcmitype/Dataset" property="dct:title" rel="dct:type">`r project_name`</span> von <a xmlns:cc="http://creativecommons.org/ns#" href="https://github.com/srfdata/`r project_name`" property="cc:attributionName" rel="cc:attributionURL">SRF Data</a> ist lizenziert unter einer <a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/">Creative Commons Namensnennung - Weitergabe unter gleichen Bedingungen 4.0 International Lizenz</a>.
+
+### Weitere Projekte
+
+Code & Daten von [SRF Data](http://srf.ch/data) sind unter [http://srfdata.github.io](http://srfdata.github.io) verfügbar.
+
+### Haftungsausschluss
+
+Die veröffentlichten Informationen sind sorgfältig zusammengestellt, erheben aber keinen Anspruch auf Aktualität, Vollständigkeit oder Richtigkeit. Es wird keine Haftung übernommen für Schäden, die  durch die Verwendung dieses Scripts oder der daraus gezogenen Informationen entstehen. Dies gilt ebenfalls für Inhalte Dritter, die über dieses Angebot zugänglich sind.
+
+
+### Originalquelle & Vorgehen
+
+Die Informationen zur interaktiven Karte und den Werten im Artikel stammen aus dem Datensatz des Direkten Verkehrs Schweiz (<a href="https://opentransportdata.swiss" target="_blank">opentransportdata.swiss</a>) zur Verbreitung von GA und Halbtax zwischen 2012-2016. Der Fokus der vorliegenden Analyse bezieht sich auf die Daten von 2016 (Datenauszug KW 51, 2016). In einem ersten Schritt erfolgt die Zuordnung zu den zu diesem Zeitpunkt gültigen Daten der <a href="https://www.bfs.admin.ch/bfs/de/home/statistiken/soziale-sicherheit/sozialberichterstattung/statistischer-sozialbericht-schweiz.assetdetail.3202995.html" target="_blank">ständigen Wohnbevölkerung anhand der Postleitzahl</a> (31.12.2015). Für den anschliessenden Abgleich zwischen Postleitzahl und Gemeinde wird die vom BFS publizierte <a href="https://www.bfs.admin.ch/bfs/de/home/grundlagen/agvch/gwr-korrespondenztabelle.html" target="_blank">GWR-Korrespondenztabelle</a> (Stand 01.01.2017) verwendet. Damit kann ein direkter Bezug zu den durch das BFS publizierten, <a href="https://www.bfs.admin.ch/bfs/de/home/dienstleistungen/geostat/geodaten-bundesstatistik/administrative-grenzen/generalisierte-gemeindegrenzen.html" target="_blank">generalisierten Gemeindegrenzen</a> mit Stand 1.1.2017 sowie der <a href="https://www.bfs.admin.ch/bfs/de/home/grundlagen/raumgliederungen.html" target="_blank">Raumgliederung der Schweiz</a> hergestellt werden.
+
+
+## Vorbereitungen
+
+```{r preparations, echo=FALSE}
+detach_all_packages <- function() {
+  basic_packages_blank <-  c("stats",
+                             "graphics",
+                             "grDevices",
+                             "utils",
+                             "datasets",
+                             "methods",
+                             "base")
+  basic_packages <- paste("package:", basic_packages_blank, sep = "")
+
+  package_list <- search()[
+    ifelse(unlist(gregexpr("package:", search())) == 1, TRUE, FALSE)]
+
+  package_list <- setdiff(package_list, basic_packages)
+
+  if (length(package_list) > 0)  for (package in package_list) {
+    detach(package, character.only = TRUE, unload = TRUE)
+    print(paste("package ", package, " detached", sep = ""))
+  }
+}
+
+detach_all_packages()
+# nolint start
+# Hier Arbeitsverzeichnis anpassen!
+path_to_wd <- switch(EXPR = system2("whoami", stdout = TRUE),
+                     "johndoe" = "~",
+                     NULL)
+# nolint end
+if ( is.null(path_to_wd) ) {
+  stop("No working directory specified for current user")
+} else {
+  setwd(path_to_wd)
+}
+```
+
+
+### Packages definieren
+
+```{r define packages}
+# von https://mran.revolutionanalytics.com/web/packages/checkpoint/vignettes/using-checkpoint-with-knitr.html
+# alle Packages, die nicht gebraucht werden, können hier entfernt werden (auskommentieren reicht nicht!)
+# tidyverse: see https://blog.rstudio.org/2016/09/15/tidyverse-1-0-0/
+cat("
+library(tidyverse) # ggplot2, dplyr, tidyr, readr, purrr, tibble
+library(magrittr) # pipes
+library(stringr) # string manipulation
+library(readxl) # excel
+library(scales) # scales for ggplot2
+library(jsonlite) # json
+library(forcats) # easier factor handling,
+library(lintr) # code linting, auf keinen Fall entfernen ;-)
+library(sp) # spatial data handling
+library(googlesheets) # googlesheets (replace with googlesheets4 asap)
+library(rmarkdown) # muss für automatisches knitting in deploy.sh eingebunden werden",
+file = "manifest.R")
+
+
+
+# die aktuelle Version von unserem rstats-template bezieht sich auf den 1. Juni 2017
+package_date <- "2017-06-01"
+```
+
+### Packages installieren
+
+```{r install packages}
+if (!require(checkpoint)) {
+  if (!require(devtools)) {
+    install.packages("devtools", repos = "http://cran.us.r-project.org")
+    require(devtools)
+  }
+  devtools::install_github("checkpoint",
+                           username = "RevolutionAnalytics",
+                           ref = "v0.3.2",
+                           repos = "http://cran.us.r-project.org")
+  require(checkpoint)
+}
+# nolint start
+if (!dir.exists("~/.checkpoint")) {
+  dir.create("~/.checkpoint")
+}
+# nolint end
+checkpoint(snapshotDate = package_date,
+           project = path_to_wd,
+           verbose = T,
+           scanForPackages = T,
+           use.knitr = F,
+           R.version = r_version) # wenn eine "ähnliche" Version von R
+ # installiert ist (3.4.x in diesem Fall), kann dieses
+ # Argument hier entfernt und die vorhandene R-Version
+ # verwendet werden - vorausgesetzt, die hier verwendeten
+ # Packages funktionieren mit dieser.
+rm(package_date, r_version)
+```
+
+
+### Packages laden
+
+```{r load packages}
+source("manifest.R")
+unlink("manifest.R")
+sessionInfo()
+rm(list = ls(all.names = TRUE))
+```
+
+## Daten einlesen
+
+### SBB GA- und HTA Daten
+
+```{r}
+
+# Contains data number of GA and HTA by PLZ
+# For cases with less than 20 GA or HTA the data provider calculated 
+# the average quantity of GA travelcards for all districts 
+# that share the same first number in their PLZ.
+
+# read SBB raw data
+SBB <- read_excel("input/SBB_GA_HTA_2016.xlsx")
+
+# rename column names
+SBB %<>%
+  rename(Jahr_SBB = Jahr_An_Anno,
+         PLZ = PLZ_NPA,
+         GA = GA_AG,
+         GA_flag = GA_AG_flag,
+         HTA = `HTA_ADT_meta-prezzo`,
+         HTA_flag = `HTA_ADT_meta-prezzo_flag`)
+
+# define PLZ as numeric
+SBB %<>%
+  mutate(PLZ = as.numeric(PLZ))
+
+# create data frame with all years
+SBB_years <- SBB
+
+# filter for 2016 only
+SBB %<>% filter(Jahr_SBB == 2016)
+
+```
+
+
+### BFS Wohnbevölkerungs-Daten
+
+```{r}
+
+# Total population per PLZ
+
+# create empty list
+bevoelk <- list()
+
+# loop for reading excel file with 5 sheets
+for (i in 1:6){
+  temp_df <- read_excel("input/BFS_Wohnbevoelkerung_PLZ_2010-2016.xlsx", sheet = i, skip = 3)
+  temp_df <- temp_df[-1, ] # delete unnecessary row
+  temp_df <-  temp_df[1:min(which(is.na(temp_df$X__1))) - 1, ]
+  temp_df$Jahr <- 2017 - i
+  bevoelk[[i]] <- temp_df
+}
+
+# remove temp loop variables: i, temp_df
+rm(i)
+rm(temp_df)
+
+# binding data frames by row
+Population <- bind_rows(bevoelk)
+rm(bevoelk) # remove unused list
+
+# Create data frame total population for all years (2012-2015)
+Population_years <- Population %>%
+  group_by(Jahr) %>%
+  summarize(Einw = sum(Total)) %>%
+  slice(1:5)
+
+# Select poplation data of 31.12.2015
+Population %<>%
+  filter(Jahr == 2015)
+
+# rename variables and change variable type
+Population %<>%
+  rename(PLZ = X__1) %>%
+  rename(Anzahl_Einw = Total) %>%
+  rename(Jahr_BFS = Jahr) %>%
+  mutate(PLZ = as.numeric(PLZ))
+
+```
+
+
+### BFS GWR-Korrespondenztabelle
+
+
+
+```{r}
+
+### Providing correspondance between PLZ and BFS-GDE-NR.
+
+# read BFS GWR Gemeinde-Daten 01.01.2017 #
+Gemeinden <- read_excel("input/BFS_GWR_Korrespondenztabelle_2017_Januar.xls",
+                        sheet = 2, skip = 11)
+
+# rename variables
+Gemeinden %<>%
+  rename(PLZ =  PLZ4,
+         Anteil_GDE = `%_IN_GDE`,
+         Kanton = GDENR, # wrong column name in source file
+         Gde_Nr = KTKZ, # wrong column name in source file
+         Gde_Nam = GDENAMK)
+
+# check number of rows (should contain 2255 rows)
+count(Gemeinden, Gde_Nr)
+
+# Plausibility check of variable summe_anteil (if outside range)
+Gemeinden %>%
+  group_by(PLZ) %>%
+  summarize(summe_anteil = sum(Anteil_GDE)) %>%
+  mutate(outside_range = ifelse(abs(100 - summe_anteil) > .5, TRUE, FALSE)) %>%
+  count(outside_range)
+
+```
+
+
+### BFS Raumgliederung Schweiz
+
+```{r}
+
+# provides several classifcations for structural analisys
+# on the level of municipalities
+
+# read excel data
+Spatial_structure <- read_excel(
+  "input/BFS_Raumgliederung_Schweiz_2017_Januar.xlsx",
+  sheet = 1, range = "A8:Z2262", col_names = F)
+
+# read column names
+colnames_df <- read_excel(
+  "input/BFS_Raumgliederung_Schweiz_2017_Januar.xlsx",
+  sheet = 1, range = "A4:Z4", col_names = F)
+
+# change colnames in target data frame
+Spatial_structure <- rbind(colnames_df, Spatial_structure)
+colnames(Spatial_structure) <- Spatial_structure[1, ]
+Spatial_structure <- Spatial_structure[-1, ]
+rm(colnames_df) # remove unused data frame
+
+# specify column types
+Spatial_structure[, 1] <- lapply(Spatial_structure[, 1], as.numeric)
+Spatial_structure[, 3:26] <- lapply(Spatial_structure[, 3:26], as.numeric)
+
+```
+
+
+## Verbindung der Datensätze
+
+### SBB & BFS Population
+
+```{r}
+
+# Select colmuns of interest
+Population %<>%
+  select(Jahr_BFS, PLZ, Anzahl_Einw)
+
+# Combine data frames
+SBB %<>%
+  left_join(Population, by = c("PLZ"))
+
+# filter out rows with NA's = no Population data
+SBB %<>%
+  filter(!is.na(Anzahl_Einw))
+
+```
+
+
+### SBB & BFS-GWR
+
+```{r}
+
+# the variable "Anteil GDE" contains the ratio of the buildings
+# of this specific PLZ that belong to the municipality. We thereby 
+# can estimate how many GA belong approximately to each municipality.
+
+# Combine data frames
+SBB %<>%
+  full_join(Gemeinden, by = "PLZ")
+
+# RM NA's from merge (Gemeinden without SBB Data)
+SBB %<>%
+  filter(!is.na(Jahr_SBB))
+
+# calculate ratios of GA, HTA and number of inhabitants in relation to share of PLZ
+SBB %<>%
+  mutate(GA = round(GA * Anteil_GDE / 100, 4)) %>%
+  mutate(HTA = round(HTA * Anteil_GDE / 100, 4)) %>%
+  mutate(Anzahl_Einw = round(Anzahl_Einw * Anteil_GDE / 100, 4))
+
+# Plausibility Flags, percentage of flagged GAs
+sum(SBB$GA)
+SBB %>%
+  filter(!is.na(GA_flag)) %>%
+  .[["GA"]] %>%
+  sum() / sum(SBB$GA)
+
+# remove unused columns
+SBB %<>%
+  select(-Anteil_GDE, -ends_with("_flag"))
+
+```
+
+
+### SBB & BFS Raumgliederungen
+
+```{r}
+
+# left join SBB with Spatial structure
+SBB %<>%
+  left_join(Spatial_structure, by = c("Gde_Nr" = "BFS Nr."))
+
+# rename variables
+SBB %<>%
+  rename(Sprache = `Sprachgebiete 2016`,
+         Gem_Klasse = `Gemeinde-Grössenklasse 2015`,
+         Stadt_Land = `Stadt/Land-Typologie 2012`,
+         Kanton = Kanton.x)
+
+# Select variables of interest
+SBB %<>%
+  select(Jahr_SBB, Jahr_BFS, PLZ, Gde_Nam, Gde_Nr, GA,
+         HTA, Anzahl_Einw, Kanton, Grossregionen,
+         Sprache, Gem_Klasse, Stadt_Land)
+```
+
+
+### Normalisierung an Bevölkerungszahl
+
+```{r}
+
+# create data frame for analysis community level
+SBB_2016 <- SBB %>%
+  select(Gde_Nr, Gde_Nam, PLZ, Kanton,
+         GA, HTA, Anzahl_Einw, Grossregionen,
+         Sprache, Gem_Klasse, Stadt_Land)
+
+# group and summarize by Gde-Nr and normalize data with population to get relative ratios
+SBB_2016 %<>%
+  group_by(Gde_Nr, Gde_Nam, Kanton, Grossregionen,
+           Sprache, Gem_Klasse, Stadt_Land) %>%
+  summarize(GA = sum(GA),
+            HTA = sum(HTA),
+            Anzahl_Einw = sum(Anzahl_Einw)) %>%
+  ungroup() %>%
+  mutate(Anteil_GA = round(GA * 100 / Anzahl_Einw, 1),
+         Anteil_HTA = round(HTA * 100 / Anzahl_Einw, 1)) %>%
+  arrange(Gde_Nr) %>%
+  mutate(Anzahl_Einw = round(Anzahl_Einw, 0))
+
+```
+
+
+## Explorative Analyse
+
+### Deskriptive Statistik
+
+```{r}
+
+# mean ratios GA and HTA over CH
+sum(SBB_2016$GA) / sum(SBB_2016$Anzahl_Einw) * 100
+sum(SBB_2016$HTA) / sum(SBB_2016$Anzahl_Einw) * 100
+
+# mean ratios GA and HTA over municipalities
+mean(SBB_2016$Anteil_GA)
+mean(SBB_2016$Anteil_HTA)
+
+# total 2016
+sum(SBB_2016$HTA)
+sum(SBB_2016$GA)
+
+```
+
+
+### Stadt vs. Land
+
+Für die Schlüssel in den nachfolgenden Grafiken siehe jeweils die Datei `input/BFS_Raumgliederung_Schweiz_2017_Januar.xlsx`. 
+
+```{r}
+
+# city vs. countryside
+SBB_Stadt_Land <- SBB %>%
+  group_by(Stadt_Land) %>%
+  summarize(GA = sum(GA),
+            HTA = sum(HTA),
+            Anzahl_Einw = sum(Anzahl_Einw)) %>%
+  ungroup() %>%
+            mutate(Anteil_GA = round(GA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anteil_HTA = round(HTA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anzahl_Einw = round(Anzahl_Einw, 0))
+  
+# plot city vs. countryside
+ggplot(SBB_Stadt_Land, aes(x = Stadt_Land, y = Anteil_GA)) +
+  geom_col(position = "identity")
+
+```
+
+
+### Gemeindeklassen
+
+```{r}
+
+# type of municipality
+SBB_Gde_Klasse <- SBB %>%
+  group_by(Gem_Klasse) %>%
+  summarize(GA = sum(GA),
+            HTA = sum(HTA),
+            Anzahl_Einw = sum(Anzahl_Einw)) %>%
+  ungroup() %>%
+            mutate(Anteil_GA = round(GA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anteil_HTA = round(HTA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anzahl_Einw = round(Anzahl_Einw, 0))
+
+# Plot type of municipality
+ggplot(SBB_Gde_Klasse, aes(x = Gem_Klasse, y = Anteil_GA)) +
+  geom_col(position = "identity")
+
+```
+
+
+### Sprachzugehörigkeit
+
+```{r}
+
+# language affiliation
+SBB_Sprache <- SBB %>%
+  group_by(Sprache) %>%
+  summarize(GA = sum(GA),
+            HTA = sum(HTA),
+            Anzahl_Einw = sum(Anzahl_Einw)) %>%
+  ungroup() %>%
+            mutate(Anteil_GA = round(GA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anteil_HTA = round(HTA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anzahl_Einw = round(Anzahl_Einw, 0))
+
+# plot language affiliation
+ggplot(SBB_Sprache, aes(x = Sprache, y = Anteil_GA)) +
+  geom_col(position = "identity")
+
+```
+
+
+### Kantone
+
+```{r}
+
+# canton ratios
+SBB_Kantone <- SBB %>%
+  group_by(Kanton) %>%
+  summarize(GA = sum(GA),
+            HTA = sum(HTA),
+            Anzahl_Einw = sum(Anzahl_Einw)) %>%
+  ungroup() %>%
+            mutate(Anteil_HTA = round(HTA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anteil_GA = round(GA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anzahl_Einw = round(Anzahl_Einw, 0))
+
+# canton ratios GA
+ggplot(SBB_Kantone, aes(x = reorder(Kanton, -Anteil_GA),
+                        y = Anteil_GA, fill = Anteil_HTA)) +
+  geom_bar(stat = "identity")
+
+# canton ratios HTA
+ggplot(SBB_Kantone, aes(x = reorder(Kanton, -Anteil_HTA),
+                        y = Anteil_HTA, fill = Anteil_GA)) +
+  geom_bar(stat = "identity")
+
+# canton ratios GA and HTA combined
+SBB_Kantone_GA_HTA <- SBB_Kantone %>%
+  bind_rows( (SBB_Kantone)) %>%
+  mutate(ID = c(1:52)) %>%
+  mutate(GA_HTA = ifelse(ID <= 26, "GA", "HTA")) %>%
+  mutate(Anteil = ifelse(ID <= 26, Anteil_GA, Anteil_HTA)) %>%
+  arrange(desc(Anteil_GA)) %>%
+  select(-c(Anteil_GA, Anteil_HTA, ID)) %>%
+  mutate(ID = c(1:52))
+  
+# plot GA and HTA canton ratios combined
+ggplot(SBB_Kantone_GA_HTA, aes(x =  reorder(Kanton, ID),
+                               y = Anteil, fill = GA_HTA)) +
+  geom_col(position = "dodge")
+
+```
+
+
+### Grossregionen der Schweiz
+
+```{r}
+
+# seven greater regions 
+SBB_Grossregionen <- SBB %>%
+  group_by(Grossregionen) %>%
+  summarize(GA = sum(GA),
+            HTA = sum(HTA),
+            Anzahl_Einw = sum(Anzahl_Einw)) %>%
+  ungroup() %>%
+            mutate(Anteil_GA = round(GA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anteil_HTA = round(HTA * 100 / Anzahl_Einw, 1)) %>%
+            mutate(Anzahl_Einw = round(Anzahl_Einw, 0))
+
+# plot seven greater regions
+ggplot(SBB_Grossregionen, aes(x = Grossregionen, y = Anteil_GA)) +
+  geom_col(position = "identity")
+
+```
+
+
+
+### Zeitlicher Verlauf GA- und Halbtax-Verkäufe
+
+```{r}
+
+# create sbb years
+SBB_years %<>%
+  group_by(Jahr_SBB) %>%
+  summarize(GA = sum(GA), HTA = (sum(HTA)))
+
+# add population data and calculate ratio
+SBB_years <- bind_cols(SBB_years, Population_years) %>%
+  select(-Jahr) %>%
+  mutate(Anteil_GA = round(GA * 100 / Einw, 2)) %>%
+  mutate(Anteil_HTA = round(HTA * 100 / Einw, 2))
+
+# plot absolut numbers of GA
+ggplot(SBB_years, aes(x = Jahr_SBB, y = GA)) +
+  geom_bar(stat = "identity") +
+  coord_cartesian(ylim = c(400000, 500000))
+
+# plot absolut numbers of HTA
+ggplot(SBB_years, aes(x = Jahr_SBB, y = HTA)) +
+  geom_bar(stat = "identity") +
+  coord_cartesian(ylim = c(2000000, 2500000))
+
+# plot ratio of GA
+ggplot(SBB_years, aes(x = Jahr_SBB, y = Anteil_GA)) +
+  geom_bar(stat = "identity") +
+  coord_cartesian(ylim = c(4, 6))
+
+# ratio of HTA
+ggplot(SBB_years, aes(x = Jahr_SBB, y = Anteil_HTA)) +
+  geom_bar(stat = "identity") +
+  coord_cartesian(ylim = c(20, 35))
+
+# total number of GA 2012-2016
+SBB_years %>%
+  group_by(Jahr_SBB) %>%
+  summarise(sum_GA = sum(GA), n = n())
+
+# total number of HTA 2012-2016
+SBB_years %>%
+  group_by(Jahr_SBB) %>%
+  summarise(sum_HTA = sum(HTA), n = n())
+
+```
+
+
+## Linting
+
+Der Code in diesem RMarkdown wird mit [lintr](https://github.com/jimhester/lintr) automatisch auf den Wickham'schen [tidyverse style guide](http://style.tidyverse.org/) überprüft. 
+
+```{r linting}
+lintr::with_defaults(commented_code_linter = NULL) # does not work yet
+lintr::lint("main.Rmd")
+# lintr::lint("scripts/my_script.R")
+```
+
